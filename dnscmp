@@ -1,0 +1,257 @@
+#!/usr/bin/perl -w
+#
+# DNS server comparison, query by query
+
+use strict;
+use Net::DNS qw / rrsort /;
+use Net::DNS::RR::A;
+use Net::DNS::RR::AAAA;
+use Net::DNS::RR::CNAME;
+use Net::DNS::RR::MX;
+use Net::DNS::RR::PTR;
+use Net::DNS::RR::SRV;
+use Net::DNS::RR::TXT;
+use Data::Dumper;
+
+my $ERROR = "";
+
+sub dnscmp {
+  my ($q1, $q2, $type, @tests) = @_;
+  my @answer1 = $q1->answer;
+  my @answer2 = $q2->answer;
+  my $header1 = $q1->header;
+  my $header2 = $q2->header;
+
+  if (grep (/^answer$/, @tests)) {
+
+    if ($type eq 'A' || $type eq 'AAAA') {
+      @answer1 = rrsort ($type, 'address', @answer1);
+      @answer2 = rrsort ($type, 'address', @answer2);
+
+      my ($rr1, $rr2);
+      if ($#answer1 != $#answer2) {
+        $ERROR = "answer count unequal";
+        return (0);
+      }
+      while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
+        if ($rr1->address ne $rr2->address) {
+          $ERROR = "address RR mismatch: " . $rr1->address . " " . $rr2->address;
+          return (0);
+        }
+      }
+    }
+
+    elsif ($type eq 'CNAME') {
+      @answer1 = rrsort ('CNAME', 'cname', @answer1);
+      @answer2 = rrsort ('CNAME', 'cname', @answer2);
+
+      my ($rr1, $rr2);
+      if ($#answer1 != $#answer2) {
+        $ERROR = "answer count unequal";
+        return (0);
+      }
+      while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
+        if ($rr1->cname ne $rr2->cname) {
+          $ERROR = "CNAME RR mismatch: " . $rr1->cname . " " . $rr2->cname;
+          return (0);
+        }
+      }
+    }
+
+    elsif ($type eq 'MX') {
+      @answer1 = rrsort ('MX', 'exchange', @answer1);
+      @answer2 = rrsort ('MX', 'exchange', @answer2);
+
+      my ($rr1, $rr2);
+      if ($#answer1 != $#answer2) {
+        $ERROR = "answer count unequal";
+        return (0);
+      }
+      while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
+        if ($rr1->exchange ne $rr2->exchange) {
+          $ERROR = "MX RR mismatch: " . $rr1->exchange . " " . $rr2->exchange;
+          return (0);
+        }
+      }
+    }
+
+    elsif ($type eq 'TXT') {
+      @answer1 = rrsort ('TXT', 'rdata', @answer1);
+      @answer2 = rrsort ('TXT', 'rdata', @answer2);
+
+      my ($rr1, $rr2);
+      if ($#answer1 != $#answer2) {
+        $ERROR = "answer count unequal";
+        return (0);
+      }
+      while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
+        if ($rr1->rdata ne $rr2->rdata) {
+          $ERROR = "TXT RR mismatch: [" . join (' ', @$rr1->char_str_list) . "] [" . join (' ', @$rr2->char_str_list) . "]";
+          return (0);
+        }
+      }
+    }
+
+    elsif ($type eq 'SOA') {
+      my $soa1 = shift @answer1;
+      my $soa2 = shift @answer2;
+
+      if (defined ($soa1) && defined ($soa2)) {
+        my @fields = qw / serial mname minimum retry refresh expire rname /;
+        foreach my $f (@fields) {
+          if ($soa1->$f ne $soa2->$f) {
+            $ERROR = "SOA $f mismatch";
+            return (0);
+          }
+        }
+      }
+    }
+    
+    elsif ($type eq 'PTR') {
+      @answer1 = rrsort ('PTR', 'ptrdname', @answer1);
+      @answer2 = rrsort ('PTR', 'ptrdname', @answer2);
+
+      my ($rr1, $rr2);
+      if ($#answer1 != $#answer2) {
+        $ERROR = "answer count unequal";
+        return (0);
+      }
+      while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
+        if ($rr1->ptrdname ne $rr2->ptrdname) {
+          $ERROR = "PTR RR mismatch: " . $rr1->ptrdname . " " . $rr2->ptrdname;
+          return (0);
+        }
+      }
+    }
+
+    elsif ($type eq 'SRV') {
+      print Dumper @answer1;
+      @answer1 = rrsort ('SRV', 'target', @answer1);
+      @answer2 = rrsort ('SRV', 'target', @answer2);
+
+      my ($rr1, $rr2);
+      if ($#answer1 != $#answer2) {
+        $ERROR = "answer count unequal";
+        return (0);
+      }
+      while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
+        if ($rr1->target ne $rr2->target || $rr1->port ne $rr2->port) {
+          $ERROR = "SRV RR mismatch: " . $rr1->target . ':' . $rr1->port . " " . $rr2->target . ':' . $rr2->port;
+          return (0);
+        }
+      }
+    }
+
+    else {
+      @answer1 = rrsort ('Unknown', 'rdata', @answer1);
+      @answer2 = rrsort ('Unknown', 'rdata', @answer2);
+
+      my ($rr1, $rr2);
+      if ($#answer1 != $#answer2) {
+        $ERROR = "answer count unequal";
+        return (0);
+      }
+      while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
+        if ($rr1->rdata ne $rr2->rdata) {
+          my $rdatastr1 = $rr1->rdatastr;
+          my $rdatastr2 = $rr2->rdatastr;
+          my $data;
+          if (defined ($rdatastr1) && defined ($rdatastr2)) {
+            $data = "$rdatastr1 $rdatastr2";
+          } else {
+            $data = "[rdata not printable]";
+          }
+          $ERROR = "$type RR mismatch: $data";
+          return (0);
+        }
+      }
+    }
+
+  }
+
+  my @flags = grep (/^flag:/, @tests);
+  foreach my $f (@flags) {
+    my $flag = (split (/:/, $f))[1];
+    if ($header1->$flag != $header2->$flag) {
+      $ERROR = "$flag flag mismatch";
+      return (0);
+    }
+  }
+
+  return (1);
+}
+
+sub help {
+  print "Usage: dnscmp host1:port host2:port testsfile\n\n";
+  print "dnscmp sends queries defined in the tests file to two DNS servers and\n";
+  print "compares their results.  Results may be compared on just the answer\n";
+  print "section or on query flags.  Certain RR types will be compared in specific\n";
+  print "ways (e.g., SOA sections, etc.).  If more than one RR is returned, they\n";
+  print "are sorted first and then compared.  Any standard DNS header flag may\n";
+  print "be used in the comparison.\n\n";
+  print "Test file format:\n\n";
+  print "queryname TYPE [answer] [flag:xx] [flag:xx]\n\n";
+  print "www.google.com A answer flag:rd flag:ra\n";
+  print "yahoo.com MX answer\n";
+  print "mail.yahoo.com CNAME answer flag:ra\n";
+  print "mozilla.org DNSKEY answer flag:ad\n";
+  print "1.1.80.10.in-addr.arpa PTR answer\n";
+}
+
+MAIN:
+{
+  if ($ARGV[0] =~ /^--?h(elp)?$/) {
+    help();
+    exit;
+  }
+
+  if ($#ARGV != 2) {
+    help();
+    exit 1;
+  }
+
+  my ($ns1, $ns2, $tests) = @ARGV;
+  my ($host1, $port1) = (split (/:/, $ns1));
+  my ($host2, $port2) = (split (/:/, $ns2));
+  my $err = 0;
+
+  $| = 1;
+
+  Net::DNS::RR::A->set_rrsort_func ('address', sub { my ($a, $b) = ($Net::DNS::a, $Net::DNS::b); $a->address cmp $b->address; });
+  Net::DNS::RR::AAAA->set_rrsort_func ('address', sub { my ($a, $b) = ($Net::DNS::a, $Net::DNS::b); $a->address cmp $b->address; });
+  Net::DNS::RR::CNAME->set_rrsort_func ('cname', sub { my ($a, $b) = ($Net::DNS::a, $Net::DNS::b); $a->cname cmp $b->cname; });
+  Net::DNS::RR::MX->set_rrsort_func ('exchange', sub { my ($a, $b) = ($Net::DNS::a, $Net::DNS::b); $a->exchange cmp $b->exchange; });
+  Net::DNS::RR::PTR->set_rrsort_func ('ptrdname', sub { my ($a, $b) = ($Net::DNS::a, $Net::DNS::b); $a->ptrdname cmp $b->ptrdname; });
+  Net::DNS::RR::SRV->set_rrsort_func ('target', sub { my ($a, $b) = ($Net::DNS::a, $Net::DNS::b); $a->target cmp $b->target; });
+  Net::DNS::RR::TXT->set_rrsort_func ('rdata', sub { my ($a, $b) = ($Net::DNS::a, $Net::DNS::b); $a->rdata cmp $b->rdata; });
+
+  my $res1 = Net::DNS::Resolver->new (
+    nameservers => [$host1],
+    port => $port1,
+  );
+  my $res2 = Net::DNS::Resolver->new (
+    nameservers => [$host2],
+    port => $port2,
+  );
+
+  open (T, $tests);
+  while (<T>) {
+    chomp;
+    next if ($_ =~ /^#/ || $_ eq '');
+    my ($test_name, $test_type, @cmp) = (split (/\s+/, $_));
+
+    my $query1 = $res1->send ($test_name, $test_type);
+    my $query2 = $res2->send ($test_name, $test_type);
+
+    if (dnscmp ($query1, $query2, $test_type, @cmp)) {
+      print "OK: $test_name $test_type\n";
+    } else {
+      print "MISMATCH: $test_name $test_type: $ERROR\n";
+      $err++;
+    }
+  }
+
+  if ($err) {
+    exit 1;
+  }
+}

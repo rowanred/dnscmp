@@ -1,0 +1,9 @@
+# note, this may fail if the nameservers you're testing are in different
+# geographic or internet locations due to anycast DNS:
+www.google.com A answer flag:rd flag:ra
+
+# other queries
+yahoo.com MX answer
+mail.yahoo.com CNAME answer flag:ra
+mozilla.org DNSKEY answer flag:ad
+8.8.8.8.in-addr.arpa PTR answer
