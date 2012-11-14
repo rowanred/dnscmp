@@ -14,13 +14,13 @@ be used in the comparison.
 
 Test file format:
 
-queryname TYPE answer flag:xx flag:xx
+    queryname TYPE answer flag:xx flag:xx
 
-www.google.com A answer flag:rd flag:ra
-yahoo.com MX answer
-mail.yahoo.com CNAME answer flag:ra
-mozilla.org DNSKEY answer flag:ad
-1.1.80.10.in-addr.arpa PTR answer
+    www.google.com A answer flag:rd flag:ra
+    yahoo.com MX answer
+    mail.yahoo.com CNAME answer flag:ra
+    mozilla.org DNSKEY answer flag:ad
+    1.1.80.10.in-addr.arpa PTR answer
 
 notes
 =====
