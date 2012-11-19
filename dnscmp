@@ -86,7 +86,11 @@ sub dnscmp {
       }
       while ( ($rr1 = shift @answer1) && ($rr2 = shift @answer2) ) {
         if ($rr1->rdata ne $rr2->rdata) {
-          $ERROR = "TXT RR mismatch: [" . join (' ', @$rr1->char_str_list) . "] [" . join (' ', @$rr2->char_str_list) . "]";
+          my @list1 = $rr1->char_str_list;
+          my @list2 = $rr2->char_str_list;
+          my $str1 = join (' ', @list1);
+          my $str2 = join (' ', @list2);
+          $ERROR = "TXT RR mismatch: [$str1] [$str2]";
           return (0);
         }
       }
