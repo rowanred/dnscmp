@@ -129,7 +129,6 @@ sub dnscmp {
     }
 
     elsif ($type eq 'SRV') {
-      print Dumper @answer1;
       @answer1 = rrsort ('SRV', 'target', @answer1);
       @answer2 = rrsort ('SRV', 'target', @answer2);
 
